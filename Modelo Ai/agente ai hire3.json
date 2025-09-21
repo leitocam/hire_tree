@@ -1,0 +1,347 @@
+{
+  "name": "hire3sinerrores",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ia/entrevista",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "a2243402-8dcc-452e-8259-1a0ef9d7dbaf",
+      "name": "Webhook Entrevista",
+      "webhookId": "9f2f4016-1bca-4ab9-959b-713d9bc05f90"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "\nconst data = $input.item.json;\nglobalThis.interviews = globalThis.interviews || {};\nconst sessionId = data.sessionId || Math.random().toString(36).substring(2, 10);\nlet interview = globalThis.interviews[sessionId];\nif (!interview) {\n  interview = { sessionId, step: 0, answers: [], finished: false };\n  globalThis.interviews[sessionId] = interview;\n}\nreturn { json: { sessionId, answer: data.answer || null, ...interview } };\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        0
+      ],
+      "id": "058345e6-a045-454d-914a-d5da81cc2882",
+      "name": "Manejar Sesión"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const data = $input.item.json;\n\nglobalThis.interviews = globalThis.interviews || {};\nlet interview = globalThis.interviews[data.sessionId];\n\nif (!interview) {\n  return {\n    json: {\n      error: \"Sesión no encontrada\",\n      sessionId: data.sessionId,\n      finished: true\n    }\n  };\n}\n\nconst preguntas = [\n  { skill: \"comunicación\", texto: \"Cuéntame sobre una vez en que tuviste que explicar una idea compleja a tu equipo.\" },\n  { skill: \"comunicación\", texto: \"¿Cómo te aseguras de que tu mensaje sea entendido correctamente por otros?\" },\n  { skill: \"liderazgo\", texto: \"Describe una situación en la que tuviste que tomar decisiones por otros.\" },\n  { skill: \"liderazgo\", texto: \"¿Cómo motivas a tu equipo en momentos difíciles?\" },\n  { skill: \"trabajo_en_equipo\", texto: \"¿Cómo manejas desacuerdos con compañeros de equipo?\" },\n  { skill: \"trabajo_en_equipo\", texto: \"Cuéntame sobre una experiencia trabajando con personas muy diferentes a ti.\" },\n  { skill: \"resolucion_de_problemas\", texto: \"Describe un problema difícil que hayas resuelto.\" },\n  { skill: \"resolucion_de_problemas\", texto: \"¿Cómo abordas problemas cuando no tienes toda la información?\" },\n  { skill: \"adaptabilidad\", texto: \"Cuéntame sobre una vez en la que tuviste que adaptarte rápidamente a un cambio.\" },\n  { skill: \"adaptabilidad\", texto: \"¿Cómo manejas situaciones inesperadas en el trabajo?\" }\n];\n\n// Si NO hay respuesta (primer request), simplemente devuelve la primera pregunta\nif (!data.answer) {\n  return {\n    json: {\n      sessionId: data.sessionId,\n      finished: false,\n      nextQuestion: preguntas[interview.step]\n    }\n  };\n}\n\n// Guardar respuesta actual\nif (interview.step < preguntas.length) {\n  interview.answers.push({\n    pregunta: preguntas[interview.step].texto,\n    skill: preguntas[interview.step].skill,\n    respuesta: data.answer\n  });\n  interview.step++;\n}\n\nif (interview.step >= preguntas.length) {\n  interview.finished = true;\n  return {\n    json: {\n      sessionId: data.sessionId,\n      finished: true,\n      answers: interview.answers\n    }\n  };\n} else {\n  return {\n    json: {\n      sessionId: data.sessionId,\n      finished: false,\n      nextQuestion: preguntas[interview.step]\n    }\n  };\n}\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        0
+      ],
+      "id": "81f327e9-58ab-4278-92b7-b30b5381407a",
+      "name": "Preguntas Secuenciales"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [],
+          "number": [],
+          "string": [
+            {
+              "value1": "={{ $json[\"finished\"] }}",
+              "value2": "true"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        608,
+        0
+      ],
+      "id": "ba7f09f7-186a-48aa-8a74-a7b0a2ebacd2",
+      "name": "¿Entrevista Finalizada?"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "\nconst answers = $input.item.json.answers || [];\nlet prompt = `Eres un evaluador de entrevistas laborales. A continuación tienes 10 preguntas y respuestas de un candidato. Evalúa las siguientes habilidades blandas (0.0 a 1.0) según la evidencia completa:\n\n- Comunicación\n- Liderazgo\n- Trabajo en equipo\n- Resolución de problemas\n- Adaptabilidad\n\nDevuelve SOLO un JSON válido como:\n{\n  \"comunicacion\": 0.85,\n  \"liderazgo\": 0.70,\n  \"trabajo_en_equipo\": 0.90,\n  \"resolucion_de_problemas\": 0.80,\n  \"adaptabilidad\": 0.75\n}\n\nRespuestas del candidato:\\n`;\nfor (let i = 0; i < answers.length; i++) {\n  const a = answers[i];\n  prompt += `${i + 1}. (${a.skill}) Q: ${a.pregunta}\\nR: ${a.respuesta}\\n`;\n}\nreturn { json: { prompt } };\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        0
+      ],
+      "id": "caf5cb13-7ffb-4955-a7d3-5dfbb82e1367",
+      "name": "Formatear Prompt Evaluación Final"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $env.GROQ_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"llama3-8b-8192\",\n  \"messages\": [\n    { \"role\": \"system\", \"content\": \"Eres un evaluador de entrevistas laborales. Devuelve SOLO JSON válido con las habilidades blandas evaluadas.\" },\n    { \"role\": \"user\", \"content\": \"={{ $json[\"prompt\"] }}\" }\n  ],\n  \"temperature\": 0.3,\n  \"max_tokens\": 300\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1008,
+        0
+      ],
+      "id": "5b802d0f-ebe7-43fd-a75a-6e0618d4f87d",
+      "name": "Evaluar Soft Skills IA"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "\nconst res = $input.item.json;\nlet parsed;\ntry {\n  parsed = JSON.parse(res.choices[0].message.content);\n} catch (e) {\n  parsed = { error: \"Respuesta inválida IA\" };\n}\nreturn { json: { ...parsed, timestamp: new Date().toISOString() } };\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        0
+      ],
+      "id": "5e57d8ec-fdc2-41db-9aba-e504dbfd2fb8",
+      "name": "Parsear Evaluación IA"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "\nconst skills = $input.item.json;\nconst values = Object.values(skills).filter(v => typeof v === \"number\");\nconst avg = values.reduce((a, b) => a + b, 0) / values.length;\nreturn { json: { ...skills, average: avg, approved: avg >= 0.7 } };\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1408,
+        0
+      ],
+      "id": "84ac650d-6e60-470a-9e11-3c0b1058b996",
+      "name": "Evaluar Aprobación"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json[\"approved\"] }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        1600,
+        0
+      ],
+      "id": "a4f57203-87c3-4eff-8b9a-cc648c72b528",
+      "name": "¿Aprobado?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.your-blockchain.com/mintNFT",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"name\": \"SoftSkills Evaluation NFT\",\n  \"description\": \"Evaluación de habilidades blandas para entrevista Hire3\",\n  \"skills\": {{ JSON.stringify($json) }},\n  \"timestamp\": \"={{ $json[\"timestamp\"] }}\"\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1808,
+        0
+      ],
+      "id": "dc291a6e-38df-48e1-9456-10e92884a353",
+      "name": "Mint NFT Evaluación"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "\nconst data = $input.item.json;\nreturn {\n  json: {\n    status: \"completed\",\n    approved: data.approved,\n    average: data.average,\n    skills: data,\n    nftHash: data.hash || \"demo-hash\"\n  }\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        0
+      ],
+      "id": "7c799c6e-08a5-49c3-b25b-21ba56007c0a",
+      "name": "Respuesta Final"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "\nconst data = $input.item.json;\n\nreturn {\n  json: {\n    status: \"in_progress\",\n    sessionId: data.sessionId,\n    step: data.step,\n    nextQuestion: data.nextQuestion,\n    finished: false,\n    instructions: \"Responde con ejemplos específicos y claridad.\"\n  }\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        208
+      ],
+      "id": "99e643a9-31d7-4ddd-aebf-b2da912b6f52",
+      "name": "Respuesta En Progreso"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook Entrevista": {
+      "main": [
+        [
+          {
+            "node": "Manejar Sesión",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manejar Sesión": {
+      "main": [
+        [
+          {
+            "node": "Preguntas Secuenciales",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preguntas Secuenciales": {
+      "main": [
+        [
+          {
+            "node": "¿Entrevista Finalizada?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Entrevista Finalizada?": {
+      "main": [
+        [
+          {
+            "node": "Formatear Prompt Evaluación Final",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respuesta En Progreso",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatear Prompt Evaluación Final": {
+      "main": [
+        [
+          {
+            "node": "Evaluar Soft Skills IA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluar Soft Skills IA": {
+      "main": [
+        [
+          {
+            "node": "Parsear Evaluación IA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parsear Evaluación IA": {
+      "main": [
+        [
+          {
+            "node": "Evaluar Aprobación",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluar Aprobación": {
+      "main": [
+        [
+          {
+            "node": "¿Aprobado?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "¿Aprobado?": {
+      "main": [
+        [
+          {
+            "node": "Mint NFT Evaluación",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respuesta Final",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mint NFT Evaluación": {
+      "main": [
+        [
+          {
+            "node": "Respuesta Final",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "ab357d45-3f2d-4d7c-b97c-5d53517b5f1d",
+  "meta": {
+    "instanceId": "b3443fac362a6815bf08ec0a6e0767df213371f8b02bb99cecda7e9c1ad7900f"
+  },
+  "id": "WPvOCVwHRZSAaQfQ",
+  "tags": []
+}
